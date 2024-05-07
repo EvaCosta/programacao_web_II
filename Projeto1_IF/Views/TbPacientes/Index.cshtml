@@ -116,9 +116,9 @@
                 @Html.DisplayFor(modelItem => item.IdCidadeNavigation.IdCidade)
             </td>
             <td>
-                <a asp-action="Edit" asp-route-id="@item.IdPaciente">Editar</a> |
-                <a asp-action="Details" asp-route-id="@item.IdPaciente">Detalhes</a> |
-                <a asp-action="Delete" asp-route-id="@item.IdPaciente">Excluir</a>
+                <a asp-action="Edit" class="btn btn-primary"  asp-route-id="@item.IdPaciente">Editar</a>
+                <a asp-action="Details" class="btn btn-primary" asp-route-id="@item.IdPaciente">Detalhes</a>
+                <a asp-action="Delete" class="btn btn-primary"  asp-route-id="@item.IdPaciente">Excluir</a>
             </td>
         </tr>
 }

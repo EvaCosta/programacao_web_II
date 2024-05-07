@@ -1,15 +1,18 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Claims;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.EntityFrameworkCore;
 using Projeto1_IF.Models;
+using System.Security.Claims;
 
 namespace Projeto1_IF.Controllers
 {
+    [Authorize]
     public class TbPacientesController : Controller
     {
         private readonly db_IFContext _context;
@@ -20,13 +23,39 @@ namespace Projeto1_IF.Controllers
         }
 
         // GET: TbPacientes
+        [Authorize(Roles = "GerenteGeral, Medico, Nutricionista")]
         public async Task<IActionResult> Index()
         {
-            var db_IFContext = _context.TbPaciente.Include(t => t.IdCidadeNavigation);
-            return View(await db_IFContext.ToListAsync());
+            // Carregar id de usuário logado
+            string userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+          
+            var profissionalLogado = await _context.TbProfissional.FirstOrDefaultAsync(p => p.IdUser == userId);
+
+            if (profissionalLogado == null)
+            {
+                return RedirectToAction("Erro", "Home");
+            }
+
+            // Buscar os registros na tabela TbMedicoPaciente associados ao profissional logado
+            var registrosMedicoPaciente = await _context.TbMedicoPaciente
+                .Where(mp => mp.IdProfissional == profissionalLogado.IdProfissional)
+                .ToListAsync();
+
+            // Extrair os IDs dos pacientes associados
+            var idsPacientesAssociados = registrosMedicoPaciente.Select(mp => mp.IdPaciente).ToList();
+
+            // Buscar os pacientes associados ao profissional logado
+            var pacientesPorProfissional = await _context.TbPaciente
+                .Where(p => idsPacientesAssociados.Contains(p.IdPaciente))
+                .Include(t => t.IdCidadeNavigation)
+                .ToListAsync();
+
+            
+            return View(pacientesPorProfissional);
         }
 
         // GET: TbPacientes/Details/5
+        [Authorize(Roles = "GerenteGeral, Medico, Nutricionista")]
         public async Task<IActionResult> Details(int? id)
         {
             if (id == null)
@@ -48,6 +77,7 @@ namespace Projeto1_IF.Controllers
 
         [Authorize]
         // GET: TbPacientes/Create
+        [Authorize(Roles = "GerenteGeral, Medico, Nutricionista")]
         public IActionResult Create()
         {
             ViewData["IdCidade"] = new SelectList(_context.TbCidade, "IdCidade", "Nome");
@@ -59,7 +89,8 @@ namespace Projeto1_IF.Controllers
         // For more details, see http://go.microsoft.com/fwlink/?LinkId=317598.
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public async Task<IActionResult> Create([Bind("IdPaciente,Nome,Rg,Cpf,DataNascimento,NomeResponsavel,Sexo,Etnia,Endereco,Bairro,IdCidade,TelResidencial,TelComercial,TelCelular,Profissao,FlgAtleta,FlgGestante")] TbPaciente tbPaciente)
+        [Authorize(Roles = "GerenteGeral, Medico, Nutricionista")]
+        public async Task<IActionResult> Create([Bind("Nome,Rg,Cpf,DataNascimento,NomeResponsavel,Sexo,Etnia,Endereco,Bairro,IdCidade,TelResidencial,TelComercial,TelCelular,Profissao,FlgAtleta,FlgGestante")] TbPaciente tbPaciente, TbMedicoPaciente tbMedicoPaciente)
         {
             try
             {
@@ -67,8 +98,30 @@ namespace Projeto1_IF.Controllers
 
                 if (ModelState.IsValid)
                 {
+                    // Carrega o ID do usuário logado
+                    string userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+
+                    // Busca o profissional associado ao usuário logado
+                    var isLogado = await _context.TbProfissional.FirstOrDefaultAsync(p => p.IdUser == userId);
+
+                    if (isLogado == null)
+                    {
+                        // Se o profissional não for encontrado, redirecionar para a página de erro
+                        return RedirectToAction("Erro", "Home");
+                    }
+
+                    // Adiciona o paciente ao conte
                     _context.Add(tbPaciente);
                     await _context.SaveChangesAsync();
+
+                    // Cria uma nova instância de TbMedicoPaciente com o ID do profissional e do paciente
+                    tbMedicoPaciente.IdProfissional = isLogado.IdProfissional;
+                    tbMedicoPaciente.IdPaciente = tbPaciente.IdPaciente;
+
+                    // Adiciona o registro de TbMedicoPaciente ao contexto e salva as mudanças
+                    _context.Add(tbMedicoPaciente);
+                    await _context.SaveChangesAsync();
+
                     return RedirectToAction(nameof(Index));
                 }
             }
@@ -86,6 +139,7 @@ namespace Projeto1_IF.Controllers
         }
 
         // GET: TbPacientes/Edit/5
+        [Authorize(Roles = "GerenteGeral, Medico, Nutricionista")]
         public async Task<IActionResult> Edit(int? id)
         {
             if (id == null)
@@ -107,6 +161,7 @@ namespace Projeto1_IF.Controllers
         // For more details, see http://go.microsoft.com/fwlink/?LinkId=317598.
         [HttpPost, ActionName("Edit")]
         [ValidateAntiForgeryToken]
+        [Authorize(Roles = "GerenteGeral, Medico, Nutricionista")]
         public async Task<IActionResult> EditPost(int? id)
         {
             if (id == null)
@@ -120,7 +175,7 @@ namespace Projeto1_IF.Controllers
             if (await TryUpdateModelAsync<TbPaciente>(
                 tbPaciente,
                 "",
-                s => s.IdPaciente, s => s.Nome, s => s.Rg, s => s.Cpf, s => s.DataNascimento, s => s.NomeResponsavel,
+                s => s.Nome, s => s.Rg, s => s.Cpf, s => s.DataNascimento, s => s.NomeResponsavel,
                 s => s.Sexo, s => s.Etnia, s => s.Endereco, s => s.Bairro, s => s.IdCidade,
                 s => s.TelResidencial, s => s.TelComercial, s => s.TelCelular, s => s.Profissao, s => s.FlgAtleta, s => s.FlgGestante))
             {
@@ -139,6 +194,7 @@ namespace Projeto1_IF.Controllers
         }
 
         // GET: TbPacientes/Delete/5
+        [Authorize(Roles = "GerenteGeral, Medico, Nutricionista")]
         public async Task<IActionResult> Delete(int? id, bool? saveChangesError = false)
         {
             if (id == null)
@@ -167,6 +223,8 @@ namespace Projeto1_IF.Controllers
         // POST: TbPacientes/Delete/5
         [HttpPost, ActionName("Delete")]
         [ValidateAntiForgeryToken]
+        [Authorize(Roles = "GerenteGeral, Medico, Nutricionista")]
+
         public async Task<IActionResult> DeleteConfirmed(int id)
         {
             var tbPaciente = await _context.TbPaciente.FindAsync(id);
@@ -174,6 +232,16 @@ namespace Projeto1_IF.Controllers
             {
                 return RedirectToAction(nameof(Index));
             }
+
+            // Encontra todas as associações do paciente com os profissionais
+            var associacoes = await _context.TbMedicoPaciente
+                .Where(mp => mp.IdPaciente == id)
+                .ToListAsync();
+
+            // Remova essas associações
+            _context.TbMedicoPaciente.RemoveRange(associacoes);
+
+
             try
             {
                 _context.TbPaciente.Remove(tbPaciente);
